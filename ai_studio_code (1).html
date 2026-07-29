@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hogwarts Orión GO</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    <style>
+        :root {
+            --primario: #4a154b;
+            --oro: #ffcc00;
+            --fondo: #e9eff5;
+            --verde: #27ae60;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--fondo); user-select: none; }
+
+        /* HEADER STATS */
+        .header-stats {
+            width: 100%; background: white; padding: 10px; border-bottom: 3px solid var(--oro);
+            display: flex; justify-content: space-around; position: sticky; top: 0; z-index: 100;
+        }
+        .stat-item { background: #f3f3f3; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 14px; border: 1px solid #ddd; }
+
+        /* VISTAS */
+        .view { display: none; width: 100%; max-width: 500px; margin: 0 auto; padding-bottom: 80px; }
+        .view-active { display: block; }
+
+        /* TABLERO (ESTILO MONOPOLY) */
+        .board-container {
+            position: relative; width: 340px; height: 340px; margin: 40px auto;
+            background: #3d2a4d; border-radius: 10px; padding: 8px; box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+        .board-grid { display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: repeat(6, 1fr); width: 100%; height: 100%; gap: 4px; }
+        .cell {
+            background: #5d3f6d; border-radius: 4px; font-size: 8px; font-weight: bold; color: white;
+            display: flex; align-items: center; justify-content: center; text-align: center;
+        }
+        .cell-win { background: var(--verde); }
+        .cell-danger { background: #c0392b; }
+        .cell-special { background: var(--oro); color: var(--primario); }
+
+        .player {
+            width: 30px; height: 30px; background: white; border: 3px solid var(--oro);
+            border-radius: 50%; position: absolute; z-index: 50; transition: all 0.3s;
+            display: flex; align-items: center; justify-content: center; font-size: 18px;
+        }
+
+        /* BOTÓN GO (DADOS) */
+        .controls { text-align: center; margin-top: 20px; }
+        .btn-go {
+            width: 100px; height: 100px; background: linear-gradient(#e74c3c, #c0392b);
+            border: 6px solid white; border-radius: 50%; color: white; font-size: 24px;
+            font-weight: bold; cursor: pointer; box-shadow: 0 6px 0 #881d11; transition: 0.1s;
+        }
+        .btn-go:active { transform: translateY(4px); box-shadow: 0 2px 0 #881d11; }
+
+        /* ALBUM DE SETS */
+        .sets-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; padding: 15px; }
+        .set-card {
+            background: white; border-radius: 50%; aspect-ratio: 1/1;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            border: 4px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.1); cursor: pointer;
+        }
+
+        /* MENÚ INFERIOR */
+        .nav-bar {
+            position: fixed; bottom: 0; width: 100%; height: 70px; background: white;
+            border-top: 2px solid #ddd; display: flex; justify-content: space-around; align-items: center;
+        }
+        .nav-item { text-align: center; color: #777; cursor: pointer; font-weight: bold; font-size: 12px; }
+        .nav-item-active { color: var(--primario); }
+
+        /* MODAL SET */
+        .modal-set { position: fixed; top:0; left:0; width:100%; height:100%; background:white; z-index:200; display:none; flex-direction:column; }
+        .sticker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 15px; overflow-y: auto; }
+        .sticker-slot { aspect-ratio: 1/1.3; background: #eee; border-radius: 8px; text-align: center; font-size: 9px; padding: 5px; }
+        .sticker-slot img { width: 100%; filter: grayscale(1); opacity: 0.3; }
+        .sticker-slot.owned img { filter: grayscale(0); opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <!-- STATS -->
+    <div class="header-stats">
+        <div class="stat-item">🎲 <span id="stat-dice">0</span></div>
+        <div class="stat-item">🔸 <span id="stat-essence">0</span></div>
+    </div>
+
+    <!-- PANTALLA LOGIN -->
+    <div id="login-screen" style="padding: 100px 20px; text-align: center;">
+        <h2 style="color: var(--primario)">HOGWARTS ORIÓN GO</h2>
+        <input type="text" id="username" placeholder="Tu nombre..." style="padding: 15px; width: 80%; border-radius: 10px; border: 1px solid #ccc;">
+        <br><br>
+        <button onclick="iniciarSesion()" style="padding: 15px 40px; background: var(--primario); color: white; border: none; border-radius: 30px; font-weight: bold; font-size: 16px;">JUGAR</button>
+    </div>
+
+    <!-- VISTA TABLERO -->
+    <div id="view-game" class="view">
+        <div class="board-container">
+            <div id="player-token" class="player">🧙‍♂️</div>
+            <div id="board-grid" class="board-grid"></div>
+        </div>
+        <div class="controls">
+            <div id="dice-anim" style="font-size: 40px; height: 50px;"></div>
+            <button id="roll-btn" class="btn-go" onclick="tirarDados()">GO!</button>
+            <p id="timer" style="font-size: 11px; color: #666;"></p>
+        </div>
+    </div>
+
+    <!-- VISTA ÁLBUM -->
+    <div id="view-album" class="view">
+        <h2 style="text-align: center; color: var(--primario);">COSECHA MÁGICA</h2>
+        <div class="sets-grid" id="sets-container"></div>
+    </div>
+
+    <!-- MENÚ NAVEGACIÓN -->
+    <div class="nav-bar" id="bottom-nav" style="display: none;">
+        <div class="nav-item nav-item-active" onclick="switchTab('game')">🎲<br>JUEGO</div>
+        <div class="nav-item" onclick="switchTab('album')">📖<br>ÁLBUM</div>
+    </div>
+
+    <!-- MODAL DETALLE SET -->
+    <div id="modal-set" class="modal-set">
+        <div style="background: var(--primario); color: white; padding: 20px; display: flex; align-items: center; justify-content: space-between;">
+            <div onclick="cerrarSet()" style="font-size: 24px;">✕</div>
+            <div id="modal-title" style="font-weight: bold;">SET</div>
+            <div id="modal-count">0/9</div>
+        </div>
+        <div class="sticker-grid" id="sticker-grid"></div>
+    </div>
+
+<script>
+    const fbURL = "https://album-75178-default-rtdb.firebaseio.com/";
+    let user = "";
+    let playerData = { dice: 20, essences: 0, pos: 0 };
+    let misCromos = new Set();
+
+    const boardData = [
+        { name: "SALIDA", type: "special", reward: 100 }, { name: "Aula 1", type: "normal", reward: 20 }, { name: "DUELO", type: "danger", reward: -50 },
+        { name: "SOBRE", type: "win", reward: "sticker" }, { name: "Patio", type: "normal", reward: 30 }, { name: "AZKABAN", type: "danger", reward: 0 },
+        { name: "Bosque", type: "normal", reward: 40 }, { name: "SOBRE", type: "win", reward: "sticker" }, { name: "Hagrid", type: "special", reward: 80 },
+        { name: "Torre", type: "normal", reward: 20 }, { name: "MALFOY", type: "danger", reward: -100 }, { name: "Lago", type: "normal", reward: 35 },
+        { name: "SOBRE", type: "win", reward: "sticker" }, { name: "Cena", type: "normal", reward: 50 }, { name: "SNITCH", type: "special", reward: 200 },
+        { name: "Dementor", type: "danger", reward: -80 }, { name: "Tienda", type: "normal", reward: 30 }, { name: "Búhos", type: "normal", reward: 20 },
+        { name: "SOBRE", type: "win", reward: "sticker" }, { name: "Bodega", type: "normal", reward: 15 }
+    ];
+
+    const setsConfig = [
+        { name: "AULAS", ids: [1,2,3,4,5,6,7,8,9], icon: "🏰" },
+        { name: "CRIATURAS", ids: [10,11,12,13,14,15,16,17,18], icon: "🐉" },
+        { name: "VAMPIROS", ids: [102,103,104,105,106,107,108,109,110], icon: "🧛‍♂️" }
+    ];
+
+    async function iniciarSesion() {
+        user = document.getElementById('username').value.trim().replace(/[\.\#\$\[\]]/g, "_");
+        if(!user) return;
+
+        // Cargar datos del tablero
+        const resTab = await fetch(`${fbURL}tablero_orion/${user}.json`);
+        const dataTab = await resTab.json();
+        if(dataTab) playerData = dataTab;
+
+        // Cargar cromos poseídos
+        const resAlb = await fetch(`${fbURL}usuarios/${user}.json`);
+        const dataAlb = await resAlb.json();
+        if(dataAlb) { Object.keys(dataAlb).forEach(id => { if(dataAlb[id] === true) misCromos.add(parseInt(id)); }); }
+
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('view-game').classList.add('view-active');
+        document.getElementById('bottom-nav').style.display = 'flex';
+        
+        generarTableroVisual();
+        actualizarUI();
+        moverToken(playerData.pos);
+        renderizarSets();
+    }
+
+    function tirarDados() {
+        if(playerData.dice <= 0) return alert("¡No tienes más dados!");
+        
+        const roll = Math.floor(Math.random() * 6) + 1;
+        document.getElementById('dice-anim').innerText = "🎲 " + roll;
+        playerData.dice--;
+        document.getElementById('roll-btn').disabled = true;
+
+        let current = playerData.pos;
+        let target = (current + roll) % boardData.length;
+
+        const anim = setInterval(() => {
+            current = (current + 1) % boardData.length;
+            moverToken(current);
+            if(current === target) {
+                clearInterval(anim);
+                playerData.pos = target;
+                finalizarTurno(target);
+            }
+        }, 300);
+    }
+
+    async function finalizarTurno(pos) {
+        const casilla = boardData[pos];
+        
+        if(casilla.reward === "sticker") {
+            const nuevoID = Math.floor(Math.random() * 126) + 1;
+            misCromos.add(nuevoID);
+            await fetch(`${fbURL}usuarios/${user}/${nuevoID}.json`, { method: 'PUT', body: 'true' });
+            alert("🎁 ¡CAISTE EN SOBRE! Ganaste el cromo N° " + nuevoID);
+            confetti({ particleCount: 150, spread: 70 });
+        } else {
+            playerData.essences += casilla.reward;
+        }
+
+        actualizarUI();
+        guardarFirebase();
+        renderizarSets();
+        document.getElementById('roll-btn').disabled = false;
+    }
+
+    function moverToken(pos) {
+        const cell = document.getElementById(`cell-${pos}`);
+        const token = document.getElementById('player-token');
+        token.style.left = cell.offsetLeft + 5 + "px";
+        token.style.top = cell.offsetTop + 5 + "px";
+    }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('view-active'));
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('nav-item-active'));
+        
+        if(tab === 'game') {
+            document.getElementById('view-game').classList.add('view-active');
+            document.querySelectorAll('.nav-item')[0].classList.add('nav-item-active');
+            moverToken(playerData.pos);
+        } else {
+            document.getElementById('view-album').classList.add('view-active');
+            document.querySelectorAll('.nav-item')[1].classList.add('nav-item-active');
+        }
+    }
+
+    function renderizarSets() {
+        const container = document.getElementById('sets-container');
+        container.innerHTML = "";
+        setsConfig.forEach(set => {
+            const has = set.ids.filter(id => misCromos.has(id)).length;
+            const card = document.createElement('div');
+            card.className = "set-card";
+            card.onclick = () => abrirSet(set);
+            card.innerHTML = `<div style="font-size:40px">${set.icon}</div><div style="font-size:10px;font-weight:bold">${set.name}</div><div style="color:var(--primario);font-weight:bold">${has}/9</div>`;
+            container.appendChild(card);
+        });
+    }
+
+    function abrirSet(set) {
+        document.getElementById('modal-set').style.display = 'flex';
+        document.getElementById('modal-title').innerText = set.name;
+        const grid = document.getElementById('sticker-grid');
+        grid.innerHTML = "";
+        let count = 0;
+        set.ids.forEach(id => {
+            const owned = misCromos.has(id);
+            if(owned) count++;
+            const slot = document.createElement('div');
+            slot.className = `sticker-slot ${owned ? 'owned' : ''}`;
+            slot.innerHTML = `<img src="https://i.postimg.cc/R3GqhsDv/1.jpg"><br><b>N° ${id}</b>`;
+            grid.appendChild(slot);
+        });
+        document.getElementById('modal-count').innerText = `${count}/9`;
+    }
+
+    function cerrarSet() { document.getElementById('modal-set').style.display = 'none'; }
+    function guardarFirebase() { fetch(`${fbURL}tablero_orion/${user}.json`, { method: 'PUT', body: JSON.stringify(playerData) }); }
+    function actualizarUI() {
+        document.getElementById('stat-dice').innerText = playerData.dice;
+        document.getElementById('stat-essence').innerText = playerData.essences;
+    }
+
+    function generarTableroVisual() {
+        const grid = document.getElementById('board-grid'); grid.innerHTML = "";
+        const coords = [[5,0],[4,0],[3,0],[2,0],[1,0],[0,0],[0,1],[0,2],[0,3],[0,4],[0,5],[1,5],[2,5],[3,5],[4,5],[5,5],[5,4],[5,3],[5,2],[5,1]];
+        boardData.forEach((d, i) => {
+            const c = document.createElement('div');
+            c.className = `cell cell-${d.type}`; c.id = `cell-${i}`; c.innerText = d.name;
+            c.style.gridRow = coords[i][0] + 1; c.style.gridColumn = coords[i][1] + 1;
+            grid.appendChild(c);
+        });
+    }
+
+    function cerrarSet() { document.getElementById('modal-set').style.display = 'none'; }
+</script>
+</body>
+</html>
